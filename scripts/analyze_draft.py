@@ -13,6 +13,7 @@ from textstats import BASE_KEYS, CONN_KEYS, compute_metrics, load_paragraphs  # 
 DEFAULT_PROFILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                "author_profile.json")
 MIN_SENTENCES = 8
+SHARE_KEYS = {"short_share", "long_share", "opener_repeat_rate", "initial_connective_share"}
 
 LABELS = {
     "sent_len_mean": "sentence length, mean (words)",
@@ -47,11 +48,16 @@ def flag_metrics(draft, profile, z):
             continue
         v = draft[key]
         if key in CONN_KEYS:
-            # Only overuse matters, and only when it occurs at least twice in the draft.
-            if v > ref["mean"] + z * ref["sd"] and v * n_words / 1000.0 >= 1.5:
+            # Only overuse matters, and only when it occurs at least three times in the draft.
+            if v > ref["mean"] + z * ref["sd"] and v * n_words / 1000.0 >= 2.5:
                 flags[key] = "HIGH"
             continue
-        if v < ref["mean"] - z * ref["sd"]:
+        lo = ref["mean"] - z * ref["sd"]
+        if v < lo:
+            # A share of sentences cannot be "too low" when the author's floor is under one
+            # sentence in a draft of this size.
+            if key in SHARE_KEYS and lo * draft.get("n_sentences", 0) < 1:
+                continue
             flags[key] = "LOW"
         elif v > ref["mean"] + z * ref["sd"]:
             flags[key] = "HIGH"
@@ -84,6 +90,9 @@ def suggestions(draft, profile, flags):
     if flags.get("para_len_cv") == "LOW":
         out.append("Paragraphs are near-equal. Let them follow the content: some two sentences, "
                    "some eight.")
+    if flags.get("opener_repeat_rate") == "LOW":
+        out.append("Openers never repeat. The author often starts neighbouring sentences the same "
+                   "way (for example 'The ...'). Stop forcing variety.")
     if flags.get("opener_repeat_rate") == "HIGH":
         out.append("Neighbouring sentences start the same way. Vary the openers.")
     if flags.get("initial_connective_share") == "HIGH":

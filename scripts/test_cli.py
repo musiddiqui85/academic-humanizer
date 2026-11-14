@@ -92,6 +92,16 @@ class AnalyzeDraftTests(unittest.TestCase):
             self.assertIn("Too short to judge", r.stdout)
             self.assertNotIn("LOW", r.stdout)
 
+    def test_share_not_flagged_low_when_author_floor_is_under_one_sentence(self):
+        with tempfile.TemporaryDirectory() as d:
+            prof = write_profile(d, initial_connective_share={"mean": 0.05, "sd": 0.03,
+                                                              "min": 0.0, "max": 0.1})
+            draft = os.path.join(d, "draft.txt")
+            with open(draft, "w", encoding="utf-8") as f:
+                f.write(" ".join(["The module shows a stable and uniform response."] * 16))
+            r = run(ANALYZE, draft, "--profile", prof, "--raw", "--json")
+            self.assertNotIn("initial_connective_share", json.loads(r.stdout)["flags"])
+
     def test_json_output(self):
         with tempfile.TemporaryDirectory() as d:
             prof = write_profile(d)

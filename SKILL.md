@@ -1,15 +1,17 @@
 ---
 name: academic-humanizer
-version: 0.3.3
+version: 0.4.0
 description: |
   Improve the clarity and voice of AI-assisted academic writing (papers, theses, rebuttals) and
   funding proposals (NSF Project Summary/Description, NIH Specific Aims): preserve scholarly
   conventions, match claims to evidence (and, for proposals, claims to feasibility), and match the
-  author's own voice. It never changes a number, result, or citation, and it is not for evading
-  AI-use disclosure. Use when editing AI-assisted academic prose or grant proposals.
+  author's own voice, including the statistical shape of their prose (sentence and paragraph length
+  spread, connective and punctuation rates) measured against their own published papers. It never
+  changes a number, result, citation, or technical detail, and it is not for evading AI-use
+  disclosure. Use when editing AI-assisted academic prose or grant proposals.
 license: MIT
 compatibility: claude-code codex morphmind opencode
-allowed-tools: [Read, Write, Edit, Grep, Glob, AskUserQuestion]
+allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, AskUserQuestion]
 ---
 
 # Academic Humanizer
@@ -38,12 +40,16 @@ verb is stronger than its evidence.**
    proposal) and the target venue or funding agency. For proposals, also apply Layer 6 and preserve
    appropriate vision.
 2. **Audit** (do not edit yet): list each detected pattern with its location and proposed fix, and each
-   empirical claim's evidence status.
+   empirical claim's evidence status. For drafts of 8 or more sentences, also **measure** the draft's
+   statistical shape against the author's profile (Layer 7).
 3. **Rewrite**: same structure and content, all claims and citations preserved, tells removed, over-claims
-   matched to evidence, legitimate hedging kept.
-4. **Report**: cleaned text plus a short change log (patterns removed, claims softened or given evidence
-   pointers, voice notes). Cover everything the original covered: if it had five paragraphs, so does the
-   rewrite.
+   matched to evidence, legitimate hedging kept, and the flagged statistical dimensions moved toward the
+   author's range.
+4. **Verify**: run the technical-integrity check on original vs. rewrite (Layer 7.4). A rewrite that
+   fails is repaired or discarded, never delivered. Then re-measure.
+5. **Report**: cleaned text plus a short change log (patterns removed, claims softened or given evidence
+   pointers, voice notes, before/after statistics, integrity result). Cover everything the original
+   covered: if it had five paragraphs' worth of content, so does the rewrite.
 
 ---
 
@@ -256,6 +262,101 @@ the gap for the author rather than papering over it.
 
 ---
 
+## Layer 7: Statistical shape (measure, then match the author)
+AI-drafted prose is statistically even: sentences cluster around one length, neighbouring sentences
+differ little, paragraphs come out the same size, openers are varied on purpose, and connectives
+("Moreover", "Furthermore", "Therefore") start a large share of sentences. An author's own prose is
+uneven in its own particular way. Layers 1 to 6 fix words and claims; this layer fixes the shape, and it
+does so by **measurement against the author's own published papers**, not by eye and not against a
+generic "human" average.
+
+The scripts live in this skill's `scripts/` folder (Python standard library plus `pdftotext`). Call them
+with the skill's base directory, shown here as `<skill>`.
+
+### 7.1 The author profile
+`<skill>/author_profile.json` holds, for each metric, the mean and spread across the author's papers.
+If it is missing, ask the author for a folder of their own papers, then build it once:
+
+```
+python "<skill>/scripts/build_profile.py" "<folder of the author's papers>" --max-year 2022
+```
+
+The year is read from each filename. `--max-year` keeps the baseline to papers written before
+AI-assisted drafting was common; the later papers are left out. If the author has no papers to give,
+skip Layer 7 and say so in the report. Do not substitute another author's profile.
+
+### 7.2 Measure the draft
+Save the draft text to a file if it was pasted, then:
+
+```
+python "<skill>/scripts/analyze_draft.py" "<draft file>" --raw
+```
+
+(`--raw` keeps every paragraph; omit it for a full PDF, where captions and references should be
+stripped.) The report gives each metric, the draft's value, the author's range (mean ± 1.5 SD), a
+`LOW`/`HIGH` flag, and one suggested move per flag. Drafts under 8 sentences are too short to judge;
+under about 300 words, treat flags as hints.
+
+### 7.3 Rewrite only what is flagged
+Change only the flagged dimensions, and move them **into** the author's range, not past it. Unflagged
+dimensions stay as they are.
+
+| Flag | Move |
+|---|---|
+| Sentence length spread or neighbour change `LOW` | Merge two short related sentences into one long one; split one long sentence so a short one stands alone. Put a short sentence next to a long one. |
+| Mean sentence length `LOW` / `HIGH` | Merge related short sentences / split the longest at a clause boundary. |
+| Long-sentence share `LOW` | Let an explanation, a method description, or a list of conditions run as one long sentence, as the author does. |
+| Short-sentence share `LOW` | State a result or a transition in under 10 words. |
+| Paragraph length spread `LOW` | Let paragraphs follow the content: join two that share a topic, leave a two-sentence paragraph where the point is small. Never pad one to match another. |
+| Same-word openers `LOW` | Stop forcing variety. If the author starts neighbouring sentences with "The ..." or the subject's name, do the same. |
+| Same-word openers `HIGH` | Vary the openers. |
+| Sentences opening with a connective `HIGH`, or a connective overused | Delete the connective when the logic is already clear; otherwise move it inside the sentence ("The stress, however, ...") or fold the two sentences together with "and", "but", "so", "which". |
+| Punctuation rate `LOW` / `HIGH` | Shift toward the author's habit (more or fewer commas, semicolons, colons, parentheses) only where it reads naturally. |
+| Vocabulary spread `HIGH` | Repeat the technical term instead of cycling synonyms (this is also Layer 1's "elegant variation"). |
+
+Hard limits on this layer:
+- **Technical details stay intact. This is the first rule of the layer.** Every number, unit, equation,
+  symbol, citation, cross-reference, named method, material, condition, and procedural step in the
+  original appears in the rewrite, unchanged in value and in meaning. Never paraphrase a technical term
+  to move a statistic. Never drop a qualifier ("at 0.05 m/s", "under STC", "for the cooled module") when
+  merging or splitting sentences; the qualifier travels with its claim.
+- Merging and splitting must not change which claim a citation or a number supports.
+- No deliberate errors, no filler added to pad a sentence, no content cut to shorten one.
+- Layer 3 still holds: calibrated hedging, passive voice, "we", and definitions stay.
+- Clarity wins. If a move would make a sentence harder to follow, leave the flag standing and say so.
+
+### 7.4 Verify, then re-measure
+After every rewrite, with the original and the rewrite each saved to a file:
+
+```
+python "<skill>/scripts/check_integrity.py" "<original file>" "<rewrite file>"
+```
+
+It compares numbers, quantities (number plus unit), math, citations, cross-references, symbols and
+acronyms, and hyphenated technical terms, and it lists any content words removed or added.
+- **`FAIL`** (exit code 1): something technical was lost, changed, or added. Repair the rewrite and run
+  the check again. A rewrite is never delivered with a failed check.
+- **`REVIEW words removed`**: read the list. Each word must be filler or an AI tell (Layers 1 and 2), not
+  a technical term. Restore any technical term.
+- **`REVIEW words added`**: each must add no claim.
+- If the author supplied a glossary of terms to protect, pass it with `--protect <file>`.
+- A deliberate Layer 4 change (for example adding an evidence pointer such as "(Table 3)" at the
+  author's request) shows up as an added item. Name each such item in the report so the author can
+  confirm it; nothing else may differ.
+
+Then run `analyze_draft.py` on the rewrite. Report the flagged metrics before and after. Make at most
+one further pass; do not chase every flag to zero, since a short passage will not match a whole-paper
+average exactly.
+
+### 7.5 What this is and is not
+This matches a draft to the author's own published writing so it reads as theirs. It does not target
+any AI-detector's score, it cannot promise what a detector will report, and it does not replace the
+disclosure a venue requires.
+
+---
+
 ## Output
 Return the cleaned text plus a short change report: patterns removed (by type), claims softened or given
-evidence pointers, and any voice/venue notes. Confirm that no number, equation, or citation was altered.
+evidence pointers, and any voice/venue notes. When Layer 7 ran, add the before/after values of the
+flagged statistics and the integrity-check result (`PASS`, plus any deliberate additions named). Confirm
+that no number, equation, citation, or technical term was altered.
