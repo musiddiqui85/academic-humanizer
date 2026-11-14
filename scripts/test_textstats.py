@@ -60,6 +60,38 @@ class TextStatsTests(unittest.TestCase):
         self.assertGreater(m["conn_however_per_1000"], 0)
         self.assertGreater(m["connective_per_1000"], m["conn_however_per_1000"])
 
+    def test_nomenclature_not_merged_into_broken_paragraph(self):
+        text = (f"Tiwari {WORDS} model for the Integrated\n"
+                "a modified diode ideality factor\n"
+                "aref modified diode ideality factor at STC anisotropy index area of PV panel "
+                "displacement gradient matrix specific heat capacity constants for turbulence\n"
+                "photovoltaic system collector and validated its performance against data.")
+        paras = clean_body(text, line_paragraphs=True)
+        self.assertEqual(len(paras), 1)
+        self.assertNotIn("ideality", paras[0])
+        self.assertIn("Integrated photovoltaic system collector", paras[0])
+
+    def test_doubled_character_paragraph_dropped(self):
+        doubled = "".join(c * 2 for c in f"In order to understand {WORDS}.")
+        self.assertEqual(clean_body(doubled, line_paragraphs=True), [])
+
+    def test_ligatures_normalised_and_equation_glyph_lines_dropped(self):
+        text = (f"The modiﬁed model {WORDS}.\n"
+                "gpv ¼ gpv ref gImp þ mp T cell where it is used here")
+        paras = clean_body(text, line_paragraphs=True)
+        self.assertEqual(len(paras), 1)
+        self.assertIn("modified", paras[0])
+
+    def test_acknowledgments_with_colon_cut(self):
+        text = (f"Body {WORDS}.\n\n" * 3 +
+                f"Acknowledgments: The authors thank the university {WORDS}.")
+        self.assertEqual(len(clean_body(text)), 3)
+
+    def test_runaway_sentence_ignored(self):
+        junk = "The " + " ".join(["blob"] * 200) + "."
+        m = compute_metrics(["A normal sentence is here now. Another normal one follows it. " + junk])
+        self.assertEqual(m["n_sentences"], 2)
+
     def test_empty_input_does_not_crash(self):
         m = compute_metrics([])
         self.assertEqual(m["n_sentences"], 0)

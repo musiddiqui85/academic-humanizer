@@ -6,6 +6,7 @@ import os
 import re
 import statistics
 import subprocess
+import unicodedata
 import zipfile
 
 CONNECTIVES = [
@@ -29,12 +30,25 @@ _CITATION = re.compile(r"\[\s*\d+(?:\s*[-–,]\s*\d+)*\s*\]")
 _WORD = re.compile(r"[A-Za-z0-9]+(?:[-'’/.][A-Za-z0-9]+)*")
 _ALPHA_WORD = re.compile(r"[a-z]+(?:'[a-z]+)?")
 _HEADING_CUT = re.compile(
-    r"^\s*(?:\d+\.?\s*)?(?:references|bibliography|acknowledge?ments?|literature cited)\s*:?\s*$",
+    r"^\s*(?:\d+\.?\s*)?(?:(?:references|bibliography|literature cited)\s*:?\s*$"
+    r"|acknowledge?ments?\s*(?::|$)|conflicts? of interest\s*(?::|$)|author contributions\s*(?::|$))",
     re.IGNORECASE,
 )
 _INTRO = re.compile(r"^\s*(?:1\.?\s+|I\.\s+)?introduction\s*$", re.IGNORECASE)
 _CAPTION = re.compile(r"^\s*(?:Fig|Figs|Figure|Table|Scheme|Chart)\.?\s*\d+[a-z]?[.:]?\s+[A-Z(]")
 _TERMINAL = re.compile(r"[.!?:;][\"”')\]]*$")
+_EQ_GLYPHS = re.compile(r"[¼þð]")  # glyphs pdftotext emits for = + ( in some fonts
+MAX_SENT_WORDS = 120  # longer "sentences" are extraction artifacts, never prose
+MERGE_LOOKAHEAD = 40
+
+
+def _doubled(s):
+    """True when most letters are doubled (a PDF rendering glitch: "IInn oorrddeerr")."""
+    letters = [c for c in s if c.isalpha()]
+    if len(letters) < 40:
+        return False
+    same = sum(1 for a, b in zip(letters, letters[1:]) if a == b)
+    return same / len(letters) > 0.3
 
 
 # --------------------------------------------------------------------------- extraction
@@ -140,10 +154,13 @@ def clean_body(text, line_paragraphs=False, min_words=40, filter_lines=True, sta
         kept = []
         for line in lines:
             s = line.strip()
-            if s and (_CAPTION.match(s) or _letter_ratio(s) < ratio_floor):
+            if s and (_CAPTION.match(s) or _letter_ratio(s) < ratio_floor
+                      or _EQ_GLYPHS.search(s) or _doubled(s)):
                 continue
             kept.append(line)
         lines = kept
+    # After the glyph filter, fold ligatures and compatibility forms (the "fi" ligature, etc.).
+    lines = [unicodedata.normalize("NFKC", line) for line in lines]
 
     if line_paragraphs:
         blocks = [l.strip() for l in lines if l.strip()]
@@ -153,11 +170,19 @@ def clean_body(text, line_paragraphs=False, min_words=40, filter_lines=True, sta
         blocks = [re.sub(r"\s*\n\s*", " ", b).strip() for b in re.split(r"\n\s*\n", joined)]
         blocks = [b for b in blocks if b]
 
-    # Re-join paragraphs broken by a page or column break.
+    # Re-join paragraphs broken by a page or column break. Only a prose-like block (long enough
+    # and containing a sentence end) may continue a broken paragraph; headers, nomenclature
+    # entries, and table debris in between are left alone and dropped later.
     merged = []
     pending = None
+    since = 0
     for b in blocks:
-        if pending is not None and b[0].islower():
+        if pending is not None:
+            since += 1
+            if since > MERGE_LOOKAHEAD:
+                pending = None
+        if (pending is not None and b[0].islower() and count_words(b) >= 5
+                and re.search(r"[.!?]", b)):
             prev = merged[pending]
             if re.search(r"[A-Za-z]-$", prev):
                 merged[pending] = prev[:-1] + b
@@ -165,10 +190,12 @@ def clean_body(text, line_paragraphs=False, min_words=40, filter_lines=True, sta
                 merged[pending] = prev + " " + b
             if _TERMINAL.search(merged[pending]):
                 pending = None
+            since = 0
             continue
         merged.append(b)
-        if not _TERMINAL.search(b) and count_words(b) >= 20:
+        if pending is None and not _TERMINAL.search(b) and count_words(b) >= 20:
             pending = len(merged) - 1
+            since = 0
 
     out = []
     for b in merged:
@@ -259,7 +286,8 @@ METRIC_KEYS = BASE_KEYS + CONN_KEYS
 
 def compute_metrics(paragraphs):
     """Return the statistical shape of a list of paragraphs as a flat dict of floats."""
-    per_para = [split_sentences(p) for p in paragraphs]
+    per_para = [[s for s in split_sentences(p) if count_words(s) <= MAX_SENT_WORDS]
+                for p in paragraphs]
     per_para = [s for s in per_para if s]
     sentences = [s for para in per_para for s in para]
     lengths = [count_words(s) for s in sentences]
