@@ -1,1 +1,4 @@
-.DS_Store
+author_profile.json
+.superpowers/
+__pycache__/
+author_voice.md

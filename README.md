@@ -65,6 +65,13 @@ example, an NIH Specific Aims page, and a funded NSF CAREER summary.
   definitions, symbols, and every citation. It doesn't change a number or a reference.
 - **Has a separate mode for grant proposals (NSF, NIH):** it keeps the vision a paper would trim, and
   spends most of the effort on the first pages, since that's what reviewers score.
+- **Matches the statistical shape of your own writing (new in 0.4.0):** AI drafts are statistically
+  even (same-length sentences, equal paragraphs, a connective at the start of every other sentence). The
+  skill measures a draft against a profile built from your own papers and rewrites only what falls
+  outside your range.
+- **Checks that technical details survived:** a script compares every number, unit, equation, citation,
+  cross-reference, symbol, and technical term between the original and the rewrite, and fails the rewrite
+  if any differ.
 
 ## Install
 
@@ -83,6 +90,40 @@ It is a plain `SKILL.md` plus examples, so it also runs as a skill or system pro
 # optionally: "match my voice from prior_paper.pdf; target venue: ICLR"
 ```
 
+## Statistical profile
+
+Needs Python 3 and `pdftotext` (from Poppler or Xpdf); no Python packages.
+
+Build your profile once from a folder of your own papers (PDF, Word, LaTeX, or text). The year is read
+from each filename, and `--max-year` keeps the baseline to papers written before AI-assisted drafting:
+
+```bash
+python scripts/build_profile.py "path/to/my papers" --max-year 2022
+```
+
+Measure a draft against it:
+
+```bash
+python scripts/analyze_draft.py draft.txt --raw
+```
+
+Check that a rewrite kept every technical detail:
+
+```bash
+python scripts/check_integrity.py original.txt rewrite.txt
+```
+
+Capture your voice (person, passive use, signature phrases, which "AI tell" phrases are really your
+own habits) into `author_voice.md`, which the skill then writes to:
+
+```bash
+python scripts/extract_voice.py "path/to/my papers" --max-year 2022
+```
+
+`author_profile.json` and `author_voice.md` are personal and are git-ignored. The skill runs these for you (Layer 7 in
+[`SKILL.md`](SKILL.md)); the commands are here if you want to run them yourself. Run the tests with
+`python -m unittest discover -s scripts -p "test_*.py"`.
+
 ## Make it yours
 
 The rules here reflect one group's voice. Fork the repo and adapt them to your own: point it at a few of
@@ -91,9 +132,11 @@ personalized, not a one-size-fits-all filter.
 
 ## How it works
 
-Six layers: general AI-tell catalog → academic-specific tells → preserve scholarly conventions →
+Eight layers, with an explicit precedence rule (technical integrity, then the journal's guide, then
+manuscript structure, then the author's voice, then tell removal): general AI-tell catalog → academic-specific tells → preserve scholarly conventions →
 claim↔evidence matching → voice/venue calibration → funding-proposal mode (NSF/NIH structure,
-first-page primacy, claim↔feasibility). The audit→rewrite loop is defined in [`SKILL.md`](SKILL.md).
+first-page primacy, claim↔feasibility) → statistical shape measured against the author's own papers,
+with a scripted technical-integrity check → section-by-section manuscript guidelines. The audit→rewrite loop is defined in [`SKILL.md`](SKILL.md).
 
 ## References
 
