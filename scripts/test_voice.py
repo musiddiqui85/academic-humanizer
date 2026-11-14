@@ -32,6 +32,9 @@ class VoiceTests(unittest.TestCase):
         self.assertEqual(classify_heading("5. Conclusions"), "conclusions")
         self.assertIsNone(classify_heading("The model was solved for 3 cases."))
         self.assertIsNone(classify_heading("3.4686 A"))
+        # Sub-headings do not switch the section: "3.2 Effect of design parameters" stays in results.
+        self.assertIsNone(classify_heading("3.2 Effect of design parameters"))
+        self.assertIsNone(classify_heading("2.1. Thermal model"))
 
     def test_person_and_passive(self):
         stats = voice_stats([paper(), paper(intro_extra="We also tested a second panel here.")])

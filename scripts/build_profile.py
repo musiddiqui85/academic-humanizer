@@ -89,6 +89,9 @@ def main(argv=None):
         json.dump(profile, f, indent=2)
     print(f"Profile built from {len(papers)} papers "
           f"({sum(p['n_sentences'] for p in papers)} sentences) -> {args.out}")
+    if len(papers) < 3:
+        print(f"warning: only {len(papers)} usable paper(s). With fewer than three the ranges are "
+              "unreliable; with one, nothing can be flagged.", file=sys.stderr)
     if skipped:
         print(f"Skipped {len(skipped)}: " + "; ".join(f"{s['file']} ({s['reason']})" for s in skipped))
     if held_out:

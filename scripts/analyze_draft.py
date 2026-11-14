@@ -87,9 +87,15 @@ def suggestions(draft, profile, flags):
         out.append("Too few long sentences. Let a few explanations run long, as the author does.")
     if flags.get("long_share") == "HIGH":
         out.append("Too many very long sentences. Split a few at a natural clause boundary.")
+    if flags.get("adjacent_diff_mean") == "HIGH":
+        out.append("Neighbouring sentences swing in length more than the author's. Avoid putting "
+                   "the shortest sentences next to the longest.")
     if flags.get("para_len_cv") == "LOW":
         out.append("Paragraphs are near-equal. Let them follow the content: some two sentences, "
                    "some eight.")
+    if flags.get("para_len_cv") == "HIGH":
+        out.append("Paragraph lengths vary more than the author's. Split the longest paragraph or "
+                   "join one-sentence paragraphs to their neighbour.")
     if flags.get("opener_repeat_rate") == "LOW":
         out.append("Openers never repeat. The author often starts neighbouring sentences the same "
                    "way (for example 'The ...'). Stop forcing variety.")
@@ -139,10 +145,32 @@ def main(argv=None):
     if not os.path.isfile(args.draft):
         print(f"error: draft not found: {args.draft}", file=sys.stderr)
         return 2
-    with open(args.profile, encoding="utf-8") as f:
-        profile = json.load(f)
+    if args.z <= 0:
+        print("error: --z must be greater than 0", file=sys.stderr)
+        return 2
+    try:
+        with open(args.profile, encoding="utf-8") as f:
+            profile = json.load(f)
+        if not isinstance(profile.get("metrics"), dict) or not profile["metrics"]:
+            raise ValueError("no metrics in profile")
+    except (ValueError, AttributeError) as exc:
+        print(f"error: {args.profile} is not a valid author profile ({exc}). Rebuild it with "
+              f"build_profile.py.", file=sys.stderr)
+        return 2
 
-    draft = compute_metrics(load_paragraphs(args.draft, raw=args.raw))
+    try:
+        draft = compute_metrics(load_paragraphs(args.draft, raw=args.raw))
+        if draft["n_sentences"] < MIN_SENTENCES and not args.raw \
+                and not args.draft.lower().endswith(".pdf"):
+            # Short paragraphs are filtered by default; a pasted draft is mostly short paragraphs.
+            relaxed = compute_metrics(load_paragraphs(args.draft, raw=True))
+            if relaxed["n_sentences"] >= MIN_SENTENCES:
+                draft = relaxed
+                print("note: short paragraphs were kept (as with --raw).", file=sys.stderr)
+    except Exception as exc:
+        print(f"error: could not read the draft: {exc}", file=sys.stderr)
+        return 2
+    n_papers = len(profile.get("papers", []))
     n = draft["n_sentences"]
     if n < MIN_SENTENCES:
         msg = f"Too short to judge ({n} sentences); statistics need at least {MIN_SENTENCES}."
@@ -176,8 +204,14 @@ def main(argv=None):
         print("Suggested moves:")
         for m in moves:
             print(f"  - {m}")
+    elif n_papers and n_papers < 3:
+        print("No flags, but that means little: see the warning below.")
     else:
         print("No flags: the draft's statistical shape is within the author's range.")
+    if n_papers and n_papers < 3:
+        print(f"\nWarning: the profile was built from only {n_papers} paper(s), so the author's "
+              "ranges are unreliable (with one paper nothing can be flagged). Build it from at "
+              "least three papers.")
     if draft["n_words"] < 300:
         print("\nNote: under 300 words the statistics are noisy. Treat flags as hints.")
     return 0

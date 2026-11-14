@@ -19,6 +19,14 @@ class TextStatsTests(unittest.TestCase):
              "It worked well here.")
         self.assertEqual(len(split_sentences(s)), 2)
 
+    def test_percentage_points_and_single_capital_end_a_sentence(self):
+        self.assertEqual(len(split_sentences(
+            "The share of designs is within 3 pp. The site data are given in the workbook.")), 2)
+        self.assertEqual(len(split_sentences(
+            "The first sample was Type B. The second type was also tested here.")), 2)
+        self.assertEqual(len(split_sentences(
+            "The wall was held at 300 K. The flow was then started slowly.")), 2)
+
     def test_hyphen_rejoin_and_reference_cut(self):
         text = (f"The effi-\nciency rose {WORDS}.\n\nReferences\n"
                 f"[1] A. Author, Journal, 2010. {WORDS}")

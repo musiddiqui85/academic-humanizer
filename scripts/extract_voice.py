@@ -46,7 +46,7 @@ REPORTING = ["shows", "show", "showed", "shown", "indicates", "indicate", "indic
 HEDGES = ["may", "might", "could", "appears", "seems", "likely", "approximately", "about",
           "around", "nearly", "roughly", "almost", "generally", "usually", "typically"]
 SPELLING = [("modelling", "modeling"), ("behaviour", "behavior"), ("optimisation", "optimization"),
-            ("characteris", "characteriz"), ("colour", "color"), ("centre", "center"),
+            ("characterisation", "characterization"), ("colour", "color"), ("centre", "center"),
             ("fibre", "fiber"), ("vapour", "vapor"), ("utilis", "utiliz"), ("minimis", "minimiz"),
             ("maximis", "maximiz"), ("analysed", "analyzed")]
 _STOP = set("""the of in a to is and for on with as by at that was are be it this an from were has
@@ -88,6 +88,8 @@ def classify_heading(line):
         return None
     if re.match(r"^(?:Fig|Figure|Table)\b", s):
         return None
+    if re.match(r"^\d+\.\d", s):
+        return None  # a sub-heading (2.1, 3.2.1) stays inside its parent section
     m = _HEADING.match(s)
     if not m or len(m.group(1).split()) > 8 or len(m.group(1).strip()) < 4:
         return None

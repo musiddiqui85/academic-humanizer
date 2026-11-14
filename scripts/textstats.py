@@ -20,11 +20,10 @@ SUPPORTED = (".pdf", ".docx", ".tex", ".txt", ".md")
 _PLACEHOLDER = "\x00"
 _ABBR = re.compile(
     r"\b(?:et al|e\.g|i\.e|Fig|Figs|Eq|Eqs|Ref|Refs|vs|cf|approx|No|Sec|Tab|resp|ca|Dr|Prof|"
-    r"Mr|Ms|Inc|Ltd|Co|Vol|pp|wt|vol|viz)\.",
+    r"Mr|Ms|Inc|Ltd|Vol|wt|vol|viz)\.",
     re.IGNORECASE,
 )
 _INITIAL_CHAIN = re.compile(r"\b([A-Z])\.(?=\s?[A-Z]\.)")
-_INITIAL_NAME = re.compile(r"(?<!\d\s)(?<!°)\b([A-Z])\.(?=\s+[A-Z][a-z])")
 _SPLIT = re.compile(r"([.!?][\"”')\]]*)\s+(?=[\"“(\[]?[A-Z])")
 _CITATION = re.compile(r"\[\s*\d+(?:\s*[-–,]\s*\d+)*\s*\]")
 _WORD = re.compile(r"[A-Za-z0-9]+(?:[-'’/.][A-Za-z0-9]+)*")
@@ -61,7 +60,26 @@ def _pdf_text(path):
         )
     except FileNotFoundError as exc:
         raise RuntimeError("pdftotext is not installed or not on PATH") from exc
+    if out.returncode != 0:
+        detail = out.stderr.decode("utf-8", errors="replace").strip().splitlines()
+        raise RuntimeError("pdftotext could not read the file" + (f": {detail[0]}" if detail else ""))
     return out.stdout.decode("utf-8", errors="replace")
+
+
+def read_text(path):
+    """Read a text file whatever its encoding: UTF-8 (with or without BOM), UTF-16, or cp1252."""
+    with open(path, "rb") as f:
+        raw = f.read()
+    if raw.startswith(b"\xef\xbb\xbf"):
+        return raw[3:].decode("utf-8", errors="replace")
+    if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return raw.decode("utf-16", errors="replace")
+    if raw and raw.count(b"\x00") > len(raw) // 4:
+        return raw.decode("utf-16-le" if raw[1:2] == b"\x00" else "utf-16-be", errors="replace")
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw.decode("cp1252", errors="replace")
 
 
 def _docx_text(path):
@@ -69,7 +87,8 @@ def _docx_text(path):
         xml = z.read("word/document.xml").decode("utf-8", errors="replace")
     paras = []
     for p in re.findall(r"<w:p[ >].*?</w:p>", xml, flags=re.DOTALL):
-        runs = re.findall(r"<w:t(?:\s[^>]*)?>(.*?)</w:t>", p, flags=re.DOTALL)
+        # w:t is ordinary text; m:t is the text of a Word equation.
+        runs = re.findall(r"<[wm]:t(?:\s[^>]*)?>(.*?)</[wm]:t>", p, flags=re.DOTALL)
         text = "".join(runs)
         text = (text.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
                 .replace("&quot;", '"').replace("&apos;", "'"))
@@ -106,8 +125,7 @@ def extract_text(path):
         return _pdf_text(path)
     if ext == ".docx":
         return _docx_text(path)
-    with open(path, "r", encoding="utf-8", errors="replace") as f:
-        src = f.read()
+    src = read_text(path)
     if ext == ".tex":
         return _tex_text(src)
     return src
@@ -228,7 +246,6 @@ def split_sentences(paragraph):
         s = _INITIAL_CHAIN.sub(lambda m: m.group(1) + _PLACEHOLDER, s)
     s = re.sub(r"(?<=" + _PLACEHOLDER + r")(\s?[A-Z])\.(?=\s+[A-Z][a-z])",
                lambda m: m.group(1) + _PLACEHOLDER, s)
-    s = _INITIAL_NAME.sub(lambda m: m.group(1) + _PLACEHOLDER, s)
     parts = _SPLIT.split(s)
     sentences = []
     for i in range(0, len(parts), 2):

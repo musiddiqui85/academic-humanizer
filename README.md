@@ -113,7 +113,14 @@ Check that a rewrite kept every technical detail:
 python scripts/check_integrity.py original.txt rewrite.txt
 ```
 
-`author_profile.json` is personal and is git-ignored. The skill runs these for you (Layer 7 in
+Capture your voice (person, passive use, signature phrases, which "AI tell" phrases are really your
+own habits) into `author_voice.md`, which the skill then writes to:
+
+```bash
+python scripts/extract_voice.py "path/to/my papers" --max-year 2022
+```
+
+`author_profile.json` and `author_voice.md` are personal and are git-ignored. The skill runs these for you (Layer 7 in
 [`SKILL.md`](SKILL.md)); the commands are here if you want to run them yourself. Run the tests with
 `python -m unittest discover -s scripts -p "test_*.py"`.
 
@@ -125,10 +132,11 @@ personalized, not a one-size-fits-all filter.
 
 ## How it works
 
-Seven layers: general AI-tell catalog → academic-specific tells → preserve scholarly conventions →
+Eight layers, with an explicit precedence rule (technical integrity, then the journal's guide, then
+manuscript structure, then the author's voice, then tell removal): general AI-tell catalog → academic-specific tells → preserve scholarly conventions →
 claim↔evidence matching → voice/venue calibration → funding-proposal mode (NSF/NIH structure,
 first-page primacy, claim↔feasibility) → statistical shape measured against the author's own papers,
-with a scripted technical-integrity check. The audit→rewrite loop is defined in [`SKILL.md`](SKILL.md).
+with a scripted technical-integrity check → section-by-section manuscript guidelines. The audit→rewrite loop is defined in [`SKILL.md`](SKILL.md).
 
 ## References
 
